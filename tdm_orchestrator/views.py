@@ -2,10 +2,14 @@
 ViewSets pour les APIs REST du module TDM SQL Orchestrator.
 """
 
+import datetime
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
+from .services.variable_parser import parse_sql_variables, VariableParsingError
+from .services.sql_executor import SqlExecutor, SqlExecutionError
+from .services.export_service import RunnerExporter, ExportError
 
 from .models import (
     Type,
@@ -394,6 +398,98 @@ class SqlScriptViewSet(viewsets.ModelViewSet):
             'variables': variables,
             'count': len(variables)
         })
+    @action(detail=True, methods=['post'])
+    def validate(self, request, pk=None):
+        """
+        Valide un script en mode dry run.
+        
+        POST /api/scripts/{id}/validate/
+        Body: { "variables": {"SCHEMA": "test"} }
+        """
+        script = self.get_object()
+        variables = request.data.get('variables', {})
+        
+        if not script.datasource:
+            return Response(
+                {'detail': 'Aucune datasource configurée pour ce script.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Créer l'executor
+            executor = SqlExecutor(script.datasource)
+            
+            # Exécuter en dry run
+            result = executor.execute_dry_run(script.content, variables)
+            
+            return Response({
+                'success': result.success,
+                'duration_ms': result.duration_ms,
+                'logs': result.logs,
+                'error_message': result.error_message,
+                'statements_executed': result.statements_executed,
+            })
+        
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'])
+    def execute(self, request, pk=None):
+        """
+        Exécute un script réellement.
+        
+        POST /api/scripts/{id}/execute/
+        Body: { "variables": {"SCHEMA": "production"} }
+        """
+        script = self.get_object()
+        variables = request.data.get('variables', {})
+        
+        if not script.datasource:
+            return Response(
+                {'detail': 'Aucune datasource configurée pour ce script.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Créer l'executor
+            executor = SqlExecutor(script.datasource)
+            
+            # Créer le log d'exécution
+            from .models import ExecutionLog
+            execution_log = ExecutionLog.objects.create(
+                script=script,
+                status='RUNNING',
+                executed_by=request.user,
+                variables_used=variables
+            )
+            
+            # Exécuter
+            result = executor.execute(script.content, variables)
+            
+            # Mettre à jour le log
+            if result.success:
+                execution_log.mark_success(result.logs)
+            else:
+                execution_log.mark_failure(result.error_message, result.logs)
+            
+            return Response({
+                'execution_log_id': execution_log.id,
+                'success': result.success,
+                'duration_ms': result.duration_ms,
+                'rows_affected': result.rows_affected,
+                'logs': result.logs,
+                'error_message': result.error_message,
+            })
+        
+        except Exception as e:
+            execution_log.mark_failure(str(e))
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     @action(detail=True, methods=['post'])
     def parse(self, request, pk=None):
@@ -484,6 +580,24 @@ class RunnerViewSet(viewsets.ModelViewSet):
         instance.is_active = False
         instance.save()
     
+    @action(detail=True, methods=['post'])
+    def restore(self, request, pk=None):
+        """Restaure un runner supprimé."""
+        runner = self.get_object()
+        
+        if not runner.is_deleted:
+            return Response(
+                {'detail': 'Ce runner n\'est pas supprimé.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        runner.is_deleted = False
+        runner.is_active = True
+        runner.save()
+        
+        serializer = self.get_serializer(runner)
+        return Response(serializer.data)
+    
     @action(detail=True, methods=['get'])
     def execution_plan(self, request, pk=None):
         """
@@ -492,9 +606,158 @@ class RunnerViewSet(viewsets.ModelViewSet):
         GET /api/runners/{id}/execution_plan/
         """
         runner = self.get_object()
-        plan = runner.get_execution_plan()
+        return Response(runner.get_execution_plan())
+    
+    @action(detail=True, methods=['get'])
+    def export(self, request, pk=None):
+        """
+        Exporte le runner en ZIP.
         
-        return Response(plan)
+        GET /api/runners/{id}/export/
+        """
+        runner = self.get_object()
+        
+        try:
+            # Créer l'exporter
+            exporter = RunnerExporter(runner)
+            
+            # Générer le ZIP
+            zip_path = exporter.export()
+            
+            # Retourner le fichier
+            from django.http import FileResponse
+            response = FileResponse(
+                open(zip_path, 'rb'),
+                content_type='application/zip'
+            )
+            filename = f"runner_{runner.reference}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+            return response
+        
+        except ExportError as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=True, methods=['get'])
+    def export_info(self, request, pk=None):
+        """
+        Retourne les infos d'export sans générer le ZIP.
+        
+        GET /api/runners/{id}/export_info/
+        """
+        runner = self.get_object()
+        
+        try:
+            exporter = RunnerExporter(runner)
+            info = exporter.get_export_info()
+            
+            return Response(info)
+        
+        except Exception as e:
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['post'])
+    def execute(self, request, pk=None):
+        """
+        Exécute le runner complet.
+        
+        POST /api/runners/{id}/execute/
+        Body: { "variables": {"SCHEMA": "test", "DATE": "2024-01-01"} }
+        """
+        runner = self.get_object()
+        variables = request.data.get('variables', {})
+        
+        # Créer un log global
+        execution_log = ExecutionLog.objects.create(
+            runner=runner,
+            status='RUNNING',
+            executed_by=request.user if request.user.is_authenticated else None,
+            variables_used=variables
+        )
+        
+        results = {
+            'runner_id': runner.id,
+            'runner_name': runner.name,
+            'execution_log_id': execution_log.id,
+            'pre_scripts': [],
+            'post_scripts': [],
+            'overall_success': True,
+        }
+        
+        try:
+            # Exécuter les scripts PRE
+            for step in runner.get_pre_scripts():
+                script = step.script
+                
+                if not script.datasource:
+                    results['pre_scripts'].append({
+                        'script_name': script.name,
+                        'success': False,
+                        'duration_ms': 0,
+                        'error': 'Aucune datasource configurée',
+                    })
+                    continue
+                
+                executor = SqlExecutor(script.datasource)
+                result = executor.execute(script.content, variables)
+                
+                results['pre_scripts'].append({
+                    'script_name': script.name,
+                    'success': result.success,
+                    'duration_ms': result.duration_ms,
+                    'error': result.error_message,
+                })
+                
+                # Arrêter si erreur et stop_on_error
+                if not result.success and runner.stop_on_error:
+                    results['overall_success'] = False
+                    execution_log.mark_failure(f"Échec script PRE: {script.name}")
+                    return Response(results, status=status.HTTP_200_OK)
+            
+            # Exécuter les scripts POST
+            for step in runner.get_post_scripts():
+                script = step.script
+                
+                if not script.datasource:
+                    results['post_scripts'].append({
+                        'script_name': script.name,
+                        'success': False,
+                        'duration_ms': 0,
+                        'error': 'Aucune datasource configurée',
+                    })
+                    continue
+                
+                executor = SqlExecutor(script.datasource)
+                result = executor.execute(script.content, variables)
+                
+                results['post_scripts'].append({
+                    'script_name': script.name,
+                    'success': result.success,
+                    'duration_ms': result.duration_ms,
+                    'error': result.error_message,
+                })
+                
+                if not result.success and runner.stop_on_error:
+                    results['overall_success'] = False
+                    execution_log.mark_failure(f"Échec script POST: {script.name}")
+                    return Response(results, status=status.HTTP_200_OK)
+            
+            # Succès global
+            execution_log.mark_success("Tous les scripts exécutés avec succès")
+            return Response(results)
+        
+        except Exception as e:
+            execution_log.mark_failure(str(e))
+            return Response(
+                {'detail': str(e), 'execution_log_id': execution_log.id},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # =====================
