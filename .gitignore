@@ -55,3 +55,6 @@ Spec_Fonctionnelle_Technique_TDM_SQL.md.pdf
 # OS
 .DS_Store
 Thumbs.db
+
+# Scripts de population
+tdm_orchestrator/scripts/
