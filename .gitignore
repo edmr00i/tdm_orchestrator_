@@ -37,6 +37,7 @@ db.sqlite3-journal
 
 # IDE
 .vscode/
+.github/
 .idea/
 nouvelle-fonc-sql-runner.html
 Spec_Fonctionnelle_Technique_TDM_SQL.md.pdf
@@ -57,4 +58,10 @@ Spec_Fonctionnelle_Technique_TDM_SQL.md.pdf
 Thumbs.db
 
 # Scripts de population
-tdm_orchestrator/scripts/
+scripts/
+htmlcov/
+assets/
+.coverage
+.coverage.* 
+.pytest_cache/
+rapport_tests.html

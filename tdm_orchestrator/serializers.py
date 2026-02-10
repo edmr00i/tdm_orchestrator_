@@ -692,4 +692,23 @@ class ExecutionLogSerializer(serializers.ModelSerializer):
             'variables_used',
             'is_completed'
         ]
-        read_only_fields = '__all__'  # Tout est read-only
+        # Tout est read-only — DRF attend une liste/tuple, pas une string
+        read_only_fields = [
+            'id',
+            'runner',
+            'runner_name',
+            'script',
+            'script_name',
+            'status',
+            'status_display',
+            'logs',
+            'error_message',
+            'started_at',
+            'ended_at',
+            'duration_ms',
+            'duration_seconds',
+            'executed_by',
+            'executed_by_name',
+            'variables_used',
+            'is_completed',
+        ]
