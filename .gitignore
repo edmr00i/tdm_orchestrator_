@@ -38,6 +38,8 @@ db.sqlite3-journal
 # IDE
 .vscode/
 .idea/
+nouvelle-fonc-sql-runner.html
+Spec_Fonctionnelle_Technique_TDM_SQL.md.pdf
 *.swp
 *.swo
 *~
