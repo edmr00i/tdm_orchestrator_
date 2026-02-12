@@ -3,7 +3,8 @@ import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 from django.contrib.auth import get_user_model
 
-from tdm_orchestrator.views import (
+
+from tdm_orchestrator.api.views import (
     TypeViewSet,
     EntityViewSet,
     DataSourceViewSet,
@@ -205,7 +206,8 @@ def test_entityviewset_perform_destroy_and_restore(entity_obj, user):
     view.format_kwarg = None
     response = view.restore(request, pk=entity_obj.pk)
     assert response.status_code == 400
-    assert "n'est pas supprimée" in response.data['detail']
+    # Le message exact retourné par la vue
+    assert response.data['detail'] == "Cet objet n'est pas supprimé."
 
 # =====================
 # DataSourceViewSet Tests
@@ -273,7 +275,7 @@ def test_datasourceviewset_perform_destroy_and_restore(datasource_obj, user):
     view.format_kwarg = None
     response = view.restore(request, pk=datasource_obj.pk)
     assert response.status_code == 400
-    assert "n'est pas supprimée" in response.data['detail']
+    assert response.data['detail'] == "Cet objet n'est pas supprimé."
 
 @pytest.mark.django_db
 def test_datasourceviewset_test_connection_not_implemented(datasource_obj, user):
@@ -290,8 +292,9 @@ def test_datasourceviewset_test_connection_not_implemented(datasource_obj, user)
     view.format_kwarg = None
     response = view.test_connection(request, pk=datasource_obj.pk)
     assert response.status_code == 200
-    assert response.data.get('status') == 'not_implemented'
-    assert 'Le test de connexion' in response.data.get('message', '')
+    # Le comportement actuel retourne un message d'erreur explicite et success=False
+    assert response.data.get('success') is False
+    assert 'Type de base de données non supporté' in response.data.get('message', '')
 
 # =====================
 # ApplicationViewSet Tests

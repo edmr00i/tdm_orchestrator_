@@ -1,22 +1,87 @@
 """
-Services métier pour le module TDM SQL Orchestrator.
+Package Services - Services métier du TDM Orchestrator.
 
-Ce package contient les services pour :
-- Parsing des variables SQL
-- Exécution de scripts SQL (dry run et réel)
-- Export de runners en ZIP
+Ce package contient tous les services métier, organisés par domaine :
+- sql/ : Exécution SQL (connexions, splitters, executor)
+- parsers/ : Parsing de variables
+- export/ : Export de runners en ZIP
+- orchestration/ : Orchestration des runners
 """
 
-from .variable_parser import VariableParser, parse_sql_variables, extract_sql_variables
-from .sql_executor import SqlExecutor, SqlExecutionResult
-from .export_service import RunnerExporter, export_runner_to_zip
+# Exceptions centralisées
+from .exceptions import (
+    TDMOrchestratorError,
+    SqlExecutionError,
+    DatabaseConnectionError,
+    SqlSplitError,
+    VariableParsingError,
+    VariableValidationError,
+    ExportError,
+    ZipCreationError,
+    ConfigGenerationError,
+    OrchestrationError,
+    StepExecutionError,
+    RunnerExecutionError,
+)
+
+# Services SQL
+from .sql import (
+    SqlExecutor,
+    SqlExecutionResult,
+    ConnectionManager,
+)
+
+# Parsers
+from .parsers import (
+    VariableParser,
+    parse_sql_variables,
+    extract_sql_variables,
+)
+
+# Export
+from .export import (
+    RunnerExporter,
+    export_runner_to_zip,
+)
+
+# Orchestration
+from .orchestration import (
+    RunnerOrchestrator,
+    StepResult,
+    RunnerExecutionResult,
+)
 
 __all__ = [
+    # Exceptions
+    'TDMOrchestratorError',
+    'SqlExecutionError',
+    'DatabaseConnectionError',
+    'SqlSplitError',
+    'VariableParsingError',
+    'VariableValidationError',
+    'ExportError',
+    'ZipCreationError',
+    'ConfigGenerationError',
+    'OrchestrationError',
+    'StepExecutionError',
+    'RunnerExecutionError',
+    
+    # SQL
+    'SqlExecutor',
+    'SqlExecutionResult',
+    'ConnectionManager',
+    
+    # Parsers
     'VariableParser',
     'parse_sql_variables',
     'extract_sql_variables',
-    'SqlExecutor',
-    'SqlExecutionResult',
+    
+    # Export
     'RunnerExporter',
     'export_runner_to_zip',
+    
+    # Orchestration
+    'RunnerOrchestrator',
+    'StepResult',
+    'RunnerExecutionResult',
 ]

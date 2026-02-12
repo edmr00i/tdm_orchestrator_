@@ -1,7 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-from .views import (
+# Import depuis le nouveau package api/views
+from .api.views import (
     TypeViewSet,
     EntityViewSet,
     DataSourceViewSet,
